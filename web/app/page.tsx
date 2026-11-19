@@ -505,6 +505,7 @@ export default function Home() {
 
 function AuthScreen({ onLogin }: { onLogin: (name: string) => void }) {
   const [name, setName] = useState('');
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
 
   return (
     <main className="auth-shell">
@@ -523,7 +524,9 @@ function AuthScreen({ onLogin }: { onLogin: (name: string) => void }) {
           className="auth-form"
           onSubmit={(event) => {
             event.preventDefault();
-            onLogin(name);
+            if (isLoggingIn || !name.trim()) return;
+            setIsLoggingIn(true);
+            window.setTimeout(() => onLogin(name), 700);
           }}
         >
           <label className="field-label" htmlFor="profile-name">Имя</label>
@@ -534,10 +537,17 @@ function AuthScreen({ onLogin }: { onLogin: (name: string) => void }) {
             maxLength={40}
             autoComplete="username"
             autoFocus
+            disabled={isLoggingIn}
             onChange={(event) => setName(event.target.value)}
           />
-          <button className="save-button auth-submit" type="submit" disabled={!name.trim()}>
-            Войти в дневник
+          <button
+            className="save-button auth-submit"
+            type="submit"
+            disabled={!name.trim() || isLoggingIn}
+            aria-busy={isLoggingIn}
+          >
+            {isLoggingIn && <RefreshCw className="loading-spin" size={17} />}
+            {isLoggingIn ? 'Входим…' : 'Войти в дневник'}
           </button>
         </form>
         <p className="privacy-note">Профиль и записи сохраняются только на этом устройстве</p>

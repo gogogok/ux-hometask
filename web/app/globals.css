@@ -78,7 +78,13 @@ button { color: inherit; }
   border-color: #aaa58e;
   box-shadow: 0 0 0 4px rgba(154,170,112,.15);
 }
-.auth-submit { margin-top: 14px; }
+.auth-submit {
+  margin-top: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
 .auth-loading { color: var(--muted); font-size: 14px; }
 
 .app-shell {
@@ -601,6 +607,7 @@ h1 {
   cursor: not-allowed;
   transform: none;
 }
+.save-button.auth-submit[aria-busy="true"] { opacity: 1; cursor: wait; }
 
 .saved-quotes-card {
   grid-column: 2;
