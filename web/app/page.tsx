@@ -469,7 +469,6 @@ function AuthScreen({ onLogin }: { onLogin: (name: string) => void }) {
             maxLength={40}
             autoComplete="username"
             autoFocus
-            placeholder="Например, Даша"
             onChange={(event) => setName(event.target.value)}
           />
           <button className="save-button auth-submit" type="submit" disabled={!name.trim()}>
