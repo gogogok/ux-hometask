@@ -394,7 +394,6 @@ export default function Home() {
       setRemoteQuote({ quote: nextQuote, author: data.author.trim() });
       const existing = findTodayQuote();
       setReflection(existing?.quote === nextQuote ? existing.reflection : '');
-      setNotice('Новая цитата загружена из API');
     } catch {
       const nextIndex = (quoteIndex + 1) % QUOTES.length;
       const fallbackQuote = QUOTES[nextIndex];
@@ -402,7 +401,7 @@ export default function Home() {
       setQuoteIndex(nextIndex);
       const existing = findTodayQuote();
       setReflection(existing?.quote === fallbackQuote ? existing.reflection : '');
-      setNotice('API недоступен — показана локальная цитата');
+      setNotice('Не удалось загрузить новую мысль — показана локальная');
     } finally {
       setQuoteLoading(false);
     }
@@ -480,8 +479,6 @@ export default function Home() {
       {screen === 'quotes' && (
         <QuoteScreen
           quote={currentQuote}
-          author={currentQuoteAuthor}
-          source={currentQuoteSource}
           loading={quoteLoading}
           reflection={reflection}
           setReflection={setReflection}
@@ -662,8 +659,6 @@ function EmotionScreen({
 
 function QuoteScreen({
   quote,
-  author,
-  source,
   loading,
   reflection,
   setReflection,
@@ -674,8 +669,6 @@ function QuoteScreen({
   onSaveComment,
 }: {
   quote: string;
-  author?: string;
-  source: 'local' | 'dummyjson';
   loading: boolean;
   reflection: string;
   setReflection: (value: string) => void;
@@ -694,17 +687,11 @@ function QuoteScreen({
           <span className="quote-icon"><Quote size={22} /></span>
           <p className="eyebrow">Мысль на сегодня</p>
         </div>
-        <div className="quote-copy">
-          <blockquote>«{quote}»</blockquote>
-          <p className="quote-attribution">
-            {author && <span>— {author}</span>}
-            <span>{source === 'dummyjson' ? 'Источник: DummyJSON API' : 'Локальная подборка'}</span>
-          </p>
-        </div>
+        <blockquote>«{quote}»</blockquote>
         <div className="quote-card-actions">
           <button className="soft-button" type="button" onClick={onNext} disabled={loading}>
             <RefreshCw className={loading ? 'loading-spin' : ''} size={16} />
-            {loading ? 'Загружаем…' : 'Новая цитата из API'}
+            Другая мысль
           </button>
           <button className="quote-save-button" type="button" onClick={onSaveQuote}>
             {isQuoteSaved ? <Check size={17} /> : <Bookmark size={17} />}
@@ -760,7 +747,6 @@ function QuoteScreen({
             <div>
               <strong>{todayRecord.emotion ? 'Колба сохранена' : 'Колба пока не сохранена'}</strong>
               <p>{todayRecord.quote ? `«${todayRecord.quote.quote}»` : 'Цитата пока не сохранена'}</p>
-              {todayRecord.quote?.author && <span className="preview-quote-author">— {todayRecord.quote.author}</span>}
             </div>
           </div>
         )}
@@ -861,12 +847,6 @@ function CalendarScreen({ records, hydrated }: { records: Map<string, DayRecord>
                   ? `«${selectedRecord.quote.quote}»`
                   : 'Цитата в этот день не сохранена'}
               </blockquote>
-              {selectedRecord.quote?.author && (
-                <p className="detail-quote-meta">
-                  — {selectedRecord.quote.author}
-                  {selectedRecord.quote.source === 'dummyjson' ? ' · DummyJSON API' : ''}
-                </p>
-              )}
             </div>
 
             <div className="detail-section">

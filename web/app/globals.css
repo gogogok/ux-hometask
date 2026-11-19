@@ -508,20 +508,6 @@ h1 {
   line-height: 1.04;
   letter-spacing: -.055em;
 }
-.quote-copy {
-  position: relative;
-  z-index: 2;
-}
-.quote-attribution {
-  margin: -24px 0 32px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 7px 14px;
-  color: #3f4563;
-  font-size: 12px;
-  line-height: 1.4;
-}
-
 .soft-button {
   position: relative;
   z-index: 2;
@@ -649,13 +635,6 @@ h1 {
   font-size: 13px;
   line-height: 1.55;
 }
-.preview-quote-author {
-  display: block;
-  margin-top: 6px;
-  color: #918983;
-  font-size: 11px;
-}
-
 .empty-state.small { min-height: 390px; }
 
 .vessel-wrap--mini {
@@ -901,13 +880,6 @@ h1 {
   font-weight: 560;
   line-height: 1.45;
 }
-.detail-quote-meta {
-  margin: 9px 0 0;
-  color: #3f4563;
-  font-size: 10px;
-  line-height: 1.4;
-}
-
 .saved-heading {
   display: flex;
   align-items: flex-start;
