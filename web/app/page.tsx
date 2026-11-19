@@ -14,7 +14,7 @@ import {
   RefreshCw,
   UserRound,
 } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 const EMOTIONS = [
   { id: 'joy', name: 'Радость', color: '#F5D873', initial: 72 },
@@ -25,14 +25,6 @@ const EMOTIONS = [
   { id: 'irritation', name: 'Раздражение', color: '#E58E79', initial: 8 },
 ] as const;
 
-const QUOTES = [
-  'Тебе не нужно спешить, чтобы всё равно двигаться вперёд.',
-  'Маленькая забота о себе сегодня — уже важное действие.',
-  'Чувства приходят волнами. Ты — не волна, ты — целое море.',
-  'Можно быть в процессе и всё равно гордиться собой.',
-  'Иногда самый смелый шаг — дать себе немного тишины.',
-  'У тебя есть право на день без великих достижений.',
-] as const;
 const QUOTE_API_URL = 'https://dummyjson.com/quotes/random';
 
 const EMOTION_REFLECTIONS: Record<EmotionId, string> = {
@@ -48,6 +40,7 @@ const WEEKDAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
 const STORAGE_KEYS = {
   users: 'tiho:users',
   session: 'tiho:session',
+  screen: 'tiho:screen',
   emotions: 'tiho:emotions',
   emotionDrafts: 'tiho:emotion-drafts',
   quotes: 'tiho:quotes',
@@ -153,13 +146,37 @@ export default function Home() {
   const [note, setNote] = useState('');
   const [emotionEntries, setEmotionEntries] = useState<EmotionEntry[]>([]);
   const [quoteEntries, setQuoteEntries] = useState<QuoteEntry[]>([]);
-  const [quoteIndex, setQuoteIndex] = useState(() => new Date().getDate() % QUOTES.length);
   const [remoteQuote, setRemoteQuote] = useState<RemoteQuote | null>(null);
   const [quoteLoading, setQuoteLoading] = useState(false);
+  const [quoteLoadAttempted, setQuoteLoadAttempted] = useState(false);
   const [reflection, setReflection] = useState('');
   const [notice, setNotice] = useState('');
   const [hydrated, setHydrated] = useState(false);
   const [activeUser, setActiveUser] = useState<UserProfile | null>(null);
+
+  const loadRemoteQuote = useCallback(async () => {
+    setQuoteLoadAttempted(true);
+    setQuoteLoading(true);
+
+    try {
+      const response = await fetch(QUOTE_API_URL, {
+        headers: { Accept: 'application/json' },
+      });
+      if (!response.ok) throw new Error(`Quote API returned ${response.status}`);
+
+      const data = await response.json() as Partial<{ quote: string; author: string }>;
+      if (!data.quote?.trim() || !data.author?.trim()) {
+        throw new Error('Quote API returned incomplete data');
+      }
+
+      setRemoteQuote({ quote: data.quote.trim(), author: data.author.trim() });
+      setReflection('');
+    } catch {
+      setNotice('Не удалось загрузить новую мысль. Попробуй ещё раз.');
+    } finally {
+      setQuoteLoading(false);
+    }
+  }, []);
 
   const restoreToday = (
     userId: string,
@@ -183,13 +200,11 @@ export default function Home() {
     setValues(todayEmotion?.values ?? INITIAL_VALUES);
     setNote(todayDraft?.note ?? todayEmotion?.note ?? '');
     setReflection(todayQuote?.reflection ?? '');
-    const savedQuoteIndex = todayQuote
-      ? QUOTES.indexOf(todayQuote.quote as (typeof QUOTES)[number])
-      : -1;
-    setRemoteQuote(todayQuote && savedQuoteIndex < 0
+    const savedRemoteQuote = todayQuote?.source === 'dummyjson';
+    setRemoteQuote(todayQuote && savedRemoteQuote
       ? { quote: todayQuote.quote, author: todayQuote.author ?? 'Автор не указан' }
       : null);
-    setQuoteIndex(savedQuoteIndex >= 0 ? savedQuoteIndex : new Date().getDate() % QUOTES.length);
+    setQuoteLoadAttempted(Boolean(savedRemoteQuote));
   };
 
   useEffect(() => {
@@ -198,6 +213,10 @@ export default function Home() {
     let savedEmotions = readStorage<EmotionEntry[]>(STORAGE_KEYS.emotions, []);
     let savedQuotes = readStorage<QuoteEntry[]>(STORAGE_KEYS.quotes, []);
     const sessionUser = savedUsers.find((user) => user.id === savedSession?.userId) ?? null;
+    const savedScreen = localStorage.getItem(STORAGE_KEYS.screen);
+    const screenToRestore: Screen = savedScreen === 'quotes' || savedScreen === 'calendar'
+      ? savedScreen
+      : 'emotions';
 
     if (sessionUser) {
       savedEmotions = claimLegacyEntries(savedEmotions, sessionUser.id);
@@ -213,6 +232,7 @@ export default function Home() {
       setQuoteEntries(quotesToRestore);
       setActiveUser(sessionUser);
       if (sessionUser) restoreToday(sessionUser.id, emotionsToRestore, quotesToRestore);
+      if (sessionUser) setScreen(screenToRestore);
       setHydrated(true);
     }, 0);
 
@@ -244,6 +264,7 @@ export default function Home() {
     setActiveUser(user);
     restoreToday(user.id, migratedEmotions, migratedQuotes);
     setScreen('emotions');
+    localStorage.setItem(STORAGE_KEYS.screen, 'emotions');
   };
 
   const logout = () => {
@@ -253,7 +274,17 @@ export default function Home() {
     setNote('');
     setReflection('');
     setRemoteQuote(null);
+    setQuoteLoadAttempted(false);
     setScreen('emotions');
+    localStorage.setItem(STORAGE_KEYS.screen, 'emotions');
+  };
+
+  const changeScreen = (nextScreen: Screen) => {
+    setScreen(nextScreen);
+    localStorage.setItem(STORAGE_KEYS.screen, nextScreen);
+    if (nextScreen === 'quotes' && !remoteQuote && !quoteLoadAttempted) {
+      void loadRemoteQuote();
+    }
   };
 
   const updateNote = (value: string) => {
@@ -276,6 +307,12 @@ export default function Home() {
     return () => window.clearTimeout(timeout);
   }, [notice]);
 
+  useEffect(() => {
+    if (!hydrated || !activeUser || screen !== 'quotes' || remoteQuote || quoteLoadAttempted) return;
+    const timeout = window.setTimeout(() => void loadRemoteQuote(), 0);
+    return () => window.clearTimeout(timeout);
+  }, [activeUser, hydrated, loadRemoteQuote, quoteLoadAttempted, remoteQuote, screen]);
+
   const { fill, leaders } = useMemo(() => {
     const amount = Object.values(values).reduce((sum, value) => sum + value, 0);
     const strongestValue = Math.max(...Object.values(values));
@@ -295,9 +332,9 @@ export default function Home() {
     () => quoteEntries.filter((entry) => entry.userId === activeUser?.id),
     [activeUser, quoteEntries],
   );
-  const currentQuote = remoteQuote?.quote ?? QUOTES[quoteIndex];
+  const currentQuote = remoteQuote?.quote ?? '';
   const currentQuoteAuthor = remoteQuote?.author;
-  const currentQuoteSource: 'local' | 'dummyjson' = remoteQuote ? 'dummyjson' : 'local';
+  const currentQuoteSource = 'dummyjson' as const;
 
   const records = useMemo(() => {
     const result = new Map<string, DayRecord>();
@@ -340,7 +377,7 @@ export default function Home() {
     .find((entry) => toDayKey(entry.createdAt) === toDayKey(new Date()));
 
   const saveQuoteOnly = () => {
-    if (!activeUser) return;
+    if (!activeUser || !currentQuote) return;
     const existing = findTodayQuote();
     const entry: QuoteEntry = {
       id: existing?.id ?? Date.now(),
@@ -358,7 +395,7 @@ export default function Home() {
   };
 
   const saveQuoteComment = () => {
-    if (!reflection.trim()) return;
+    if (!reflection.trim() || !currentQuote) return;
     const existing = findTodayQuote();
     if (!existing || existing.quote !== currentQuote) {
       setNotice('Сначала сохрани эту цитату');
@@ -375,39 +412,11 @@ export default function Home() {
     setNotice('Комментарий сохранён в календаре');
   };
 
-  const showNextQuote = async () => {
-    if (quoteLoading) return;
-    setQuoteLoading(true);
-
-    try {
-      const response = await fetch(QUOTE_API_URL, {
-        headers: { Accept: 'application/json' },
-      });
-      if (!response.ok) throw new Error(`Quote API returned ${response.status}`);
-
-      const data = await response.json() as Partial<{ quote: string; author: string }>;
-      if (!data.quote?.trim() || !data.author?.trim()) {
-        throw new Error('Quote API returned incomplete data');
-      }
-
-      const nextQuote = data.quote.trim();
-      setRemoteQuote({ quote: nextQuote, author: data.author.trim() });
-      const existing = findTodayQuote();
-      setReflection(existing?.quote === nextQuote ? existing.reflection : '');
-    } catch {
-      const nextIndex = (quoteIndex + 1) % QUOTES.length;
-      const fallbackQuote = QUOTES[nextIndex];
-      setRemoteQuote(null);
-      setQuoteIndex(nextIndex);
-      const existing = findTodayQuote();
-      setReflection(existing?.quote === fallbackQuote ? existing.reflection : '');
-      setNotice('Не удалось загрузить новую мысль — показана локальная');
-    } finally {
-      setQuoteLoading(false);
-    }
+  const showNextQuote = () => {
+    if (!quoteLoading) void loadRemoteQuote();
   };
 
-  const openCalendar = () => setScreen('calendar');
+  const openCalendar = () => changeScreen('calendar');
 
   if (!hydrated) {
     return (
@@ -424,7 +433,7 @@ export default function Home() {
   return (
     <main className="app-shell">
       <header className="topbar">
-        <button className="brand" type="button" onClick={() => setScreen('emotions')} aria-label="Дневник эмоций — на главную">
+        <button className="brand" type="button" onClick={() => changeScreen('emotions')} aria-label="Дневник эмоций — на главную">
           <span className="brand-mark"><Droplets size={19} strokeWidth={2.2} /></span>
           <span>Дневник эмоций</span>
         </button>
@@ -432,14 +441,14 @@ export default function Home() {
           <button
             className={`nav-item ${screen === 'emotions' ? 'active' : ''}`}
             type="button"
-            onClick={() => setScreen('emotions')}
+            onClick={() => changeScreen('emotions')}
           >
             <Heart size={18} /> Эмоции
           </button>
           <button
             className={`nav-item ${screen === 'quotes' ? 'active' : ''}`}
             type="button"
-            onClick={() => setScreen('quotes')}
+            onClick={() => changeScreen('quotes')}
           >
             <Quote size={18} /> Цитаты
           </button>
@@ -697,13 +706,19 @@ function QuoteScreen({
           <span className="quote-icon"><Quote size={22} /></span>
           <p className="eyebrow">Мысль на сегодня</p>
         </div>
-        <blockquote>«{quote}»</blockquote>
+        <blockquote>
+          {quote
+            ? `«${quote}»`
+            : loading
+              ? 'Загружаем мысль…'
+              : 'Не удалось загрузить мысль. Попробуй ещё раз.'}
+        </blockquote>
         <div className="quote-card-actions">
           <button className="soft-button" type="button" onClick={onNext} disabled={loading}>
             <RefreshCw className={loading ? 'loading-spin' : ''} size={16} />
             Другая мысль
           </button>
-          <button className="quote-save-button" type="button" onClick={onSaveQuote}>
+          <button className="quote-save-button" type="button" onClick={onSaveQuote} disabled={!quote || loading}>
             {isQuoteSaved ? <Check size={17} /> : <Bookmark size={17} />}
             {isQuoteSaved ? 'Цитата сохранена' : 'Сохранить цитату'}
           </button>

@@ -557,6 +557,7 @@ h1 {
   font-weight: 650;
   cursor: pointer;
 }
+.quote-save-button:disabled { opacity: .45; cursor: not-allowed; }
 
 .quote-orbit {
   position: absolute;
