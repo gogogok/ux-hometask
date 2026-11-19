@@ -48,6 +48,7 @@ const STORAGE_KEYS = {
   users: 'tiho:users',
   session: 'tiho:session',
   emotions: 'tiho:emotions',
+  emotionDrafts: 'tiho:emotion-drafts',
   quotes: 'tiho:quotes',
 } as const;
 
@@ -59,6 +60,11 @@ type UserProfile = {
   id: string;
   name: string;
   createdAt: string;
+};
+
+type EmotionDraft = {
+  dayKey: string;
+  note: string;
 };
 
 type EmotionEntry = {
@@ -151,6 +157,10 @@ export default function Home() {
     savedQuotes: QuoteEntry[],
   ) => {
     const todayKey = toDayKey(new Date());
+    const emotionDrafts = readStorage<Record<string, EmotionDraft>>(STORAGE_KEYS.emotionDrafts, {});
+    const todayDraft = emotionDrafts[userId]?.dayKey === todayKey
+      ? emotionDrafts[userId]
+      : null;
     const todayEmotion = savedEmotions
       .filter((entry) => entry.userId === userId)
       .sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt))
@@ -161,7 +171,7 @@ export default function Home() {
       .find((entry) => toDayKey(entry.createdAt) === todayKey);
 
     setValues(todayEmotion?.values ?? INITIAL_VALUES);
-    setNote(todayEmotion?.note ?? '');
+    setNote(todayDraft?.note ?? todayEmotion?.note ?? '');
     setReflection(todayQuote?.reflection ?? '');
     const savedQuoteIndex = todayQuote
       ? QUOTES.indexOf(todayQuote.quote as (typeof QUOTES)[number])
@@ -230,6 +240,20 @@ export default function Home() {
     setNote('');
     setReflection('');
     setScreen('emotions');
+  };
+
+  const updateNote = (value: string) => {
+    setNote(value);
+    if (!activeUser) return;
+
+    const drafts = readStorage<Record<string, EmotionDraft>>(STORAGE_KEYS.emotionDrafts, {});
+    localStorage.setItem(STORAGE_KEYS.emotionDrafts, JSON.stringify({
+      ...drafts,
+      [activeUser.id]: {
+        dayKey: toDayKey(new Date()),
+        note: value,
+      },
+    }));
   };
 
   useEffect(() => {
@@ -402,7 +426,7 @@ export default function Home() {
           values={values}
           setValues={setValues}
           note={note}
-          setNote={setNote}
+          setNote={updateNote}
           fill={fill}
           leaders={leaders}
           entries={currentEmotionEntries}
