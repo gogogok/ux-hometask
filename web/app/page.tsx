@@ -33,6 +33,7 @@ const QUOTES = [
   'Иногда самый смелый шаг — дать себе немного тишины.',
   'У тебя есть право на день без великих достижений.',
 ] as const;
+const QUOTE_API_URL = 'https://dummyjson.com/quotes/random';
 
 const EMOTION_REFLECTIONS: Record<EmotionId, string> = {
   joy: 'Свет внутри не требует причины — позволь ему остаться.',
@@ -80,7 +81,14 @@ type QuoteEntry = {
   userId: string;
   createdAt: string;
   quote: string;
+  author?: string;
+  source?: 'local' | 'dummyjson';
   reflection: string;
+};
+
+type RemoteQuote = {
+  quote: string;
+  author: string;
 };
 
 type DayRecord = {
@@ -146,6 +154,8 @@ export default function Home() {
   const [emotionEntries, setEmotionEntries] = useState<EmotionEntry[]>([]);
   const [quoteEntries, setQuoteEntries] = useState<QuoteEntry[]>([]);
   const [quoteIndex, setQuoteIndex] = useState(() => new Date().getDate() % QUOTES.length);
+  const [remoteQuote, setRemoteQuote] = useState<RemoteQuote | null>(null);
+  const [quoteLoading, setQuoteLoading] = useState(false);
   const [reflection, setReflection] = useState('');
   const [notice, setNotice] = useState('');
   const [hydrated, setHydrated] = useState(false);
@@ -176,6 +186,9 @@ export default function Home() {
     const savedQuoteIndex = todayQuote
       ? QUOTES.indexOf(todayQuote.quote as (typeof QUOTES)[number])
       : -1;
+    setRemoteQuote(todayQuote && savedQuoteIndex < 0
+      ? { quote: todayQuote.quote, author: todayQuote.author ?? 'Автор не указан' }
+      : null);
     setQuoteIndex(savedQuoteIndex >= 0 ? savedQuoteIndex : new Date().getDate() % QUOTES.length);
   };
 
@@ -239,6 +252,7 @@ export default function Home() {
     setValues(INITIAL_VALUES);
     setNote('');
     setReflection('');
+    setRemoteQuote(null);
     setScreen('emotions');
   };
 
@@ -281,6 +295,9 @@ export default function Home() {
     () => quoteEntries.filter((entry) => entry.userId === activeUser?.id),
     [activeUser, quoteEntries],
   );
+  const currentQuote = remoteQuote?.quote ?? QUOTES[quoteIndex];
+  const currentQuoteAuthor = remoteQuote?.author;
+  const currentQuoteSource: 'local' | 'dummyjson' = remoteQuote ? 'dummyjson' : 'local';
 
   const records = useMemo(() => {
     const result = new Map<string, DayRecord>();
@@ -324,13 +341,14 @@ export default function Home() {
 
   const saveQuoteOnly = () => {
     if (!activeUser) return;
-    const currentQuote = QUOTES[quoteIndex];
     const existing = findTodayQuote();
     const entry: QuoteEntry = {
       id: existing?.id ?? Date.now(),
       userId: activeUser.id,
       createdAt: new Date().toISOString(),
       quote: currentQuote,
+      author: currentQuoteAuthor,
+      source: currentQuoteSource,
       reflection: existing?.quote === currentQuote ? existing.reflection : '',
     };
     const next = upsertDailyEntry(entry, quoteEntries);
@@ -342,7 +360,6 @@ export default function Home() {
   const saveQuoteComment = () => {
     if (!reflection.trim()) return;
     const existing = findTodayQuote();
-    const currentQuote = QUOTES[quoteIndex];
     if (!existing || existing.quote !== currentQuote) {
       setNotice('Сначала сохрани эту цитату');
       return;
@@ -358,13 +375,37 @@ export default function Home() {
     setNotice('Комментарий сохранён в календаре');
   };
 
-  const showNextQuote = () => {
-    setQuoteIndex((index) => {
-      const nextIndex = (index + 1) % QUOTES.length;
+  const showNextQuote = async () => {
+    if (quoteLoading) return;
+    setQuoteLoading(true);
+
+    try {
+      const response = await fetch(QUOTE_API_URL, {
+        headers: { Accept: 'application/json' },
+      });
+      if (!response.ok) throw new Error(`Quote API returned ${response.status}`);
+
+      const data = await response.json() as Partial<{ quote: string; author: string }>;
+      if (!data.quote?.trim() || !data.author?.trim()) {
+        throw new Error('Quote API returned incomplete data');
+      }
+
+      const nextQuote = data.quote.trim();
+      setRemoteQuote({ quote: nextQuote, author: data.author.trim() });
       const existing = findTodayQuote();
-      setReflection(existing?.quote === QUOTES[nextIndex] ? existing.reflection : '');
-      return nextIndex;
-    });
+      setReflection(existing?.quote === nextQuote ? existing.reflection : '');
+      setNotice('Новая цитата загружена из API');
+    } catch {
+      const nextIndex = (quoteIndex + 1) % QUOTES.length;
+      const fallbackQuote = QUOTES[nextIndex];
+      setRemoteQuote(null);
+      setQuoteIndex(nextIndex);
+      const existing = findTodayQuote();
+      setReflection(existing?.quote === fallbackQuote ? existing.reflection : '');
+      setNotice('API недоступен — показана локальная цитата');
+    } finally {
+      setQuoteLoading(false);
+    }
   };
 
   const openCalendar = () => setScreen('calendar');
@@ -438,7 +479,10 @@ export default function Home() {
 
       {screen === 'quotes' && (
         <QuoteScreen
-          quote={QUOTES[quoteIndex]}
+          quote={currentQuote}
+          author={currentQuoteAuthor}
+          source={currentQuoteSource}
+          loading={quoteLoading}
           reflection={reflection}
           setReflection={setReflection}
           todayRecord={records.get(toDayKey(new Date()))}
@@ -618,6 +662,9 @@ function EmotionScreen({
 
 function QuoteScreen({
   quote,
+  author,
+  source,
+  loading,
   reflection,
   setReflection,
   todayRecord,
@@ -627,11 +674,14 @@ function QuoteScreen({
   onSaveComment,
 }: {
   quote: string;
+  author?: string;
+  source: 'local' | 'dummyjson';
+  loading: boolean;
   reflection: string;
   setReflection: (value: string) => void;
   todayRecord?: DayRecord;
   hydrated: boolean;
-  onNext: () => void;
+  onNext: () => void | Promise<void>;
   onSaveQuote: () => void;
   onSaveComment: () => void;
 }) {
@@ -644,10 +694,17 @@ function QuoteScreen({
           <span className="quote-icon"><Quote size={22} /></span>
           <p className="eyebrow">Мысль на сегодня</p>
         </div>
-        <blockquote>«{quote}»</blockquote>
+        <div className="quote-copy">
+          <blockquote>«{quote}»</blockquote>
+          <p className="quote-attribution">
+            {author && <span>— {author}</span>}
+            <span>{source === 'dummyjson' ? 'Источник: DummyJSON API' : 'Локальная подборка'}</span>
+          </p>
+        </div>
         <div className="quote-card-actions">
-          <button className="soft-button" type="button" onClick={onNext}>
-            <RefreshCw size={16} /> Другая мысль
+          <button className="soft-button" type="button" onClick={onNext} disabled={loading}>
+            <RefreshCw className={loading ? 'loading-spin' : ''} size={16} />
+            {loading ? 'Загружаем…' : 'Новая цитата из API'}
           </button>
           <button className="quote-save-button" type="button" onClick={onSaveQuote}>
             {isQuoteSaved ? <Check size={17} /> : <Bookmark size={17} />}
@@ -703,6 +760,7 @@ function QuoteScreen({
             <div>
               <strong>{todayRecord.emotion ? 'Колба сохранена' : 'Колба пока не сохранена'}</strong>
               <p>{todayRecord.quote ? `«${todayRecord.quote.quote}»` : 'Цитата пока не сохранена'}</p>
+              {todayRecord.quote?.author && <span className="preview-quote-author">— {todayRecord.quote.author}</span>}
             </div>
           </div>
         )}
@@ -803,6 +861,12 @@ function CalendarScreen({ records, hydrated }: { records: Map<string, DayRecord>
                   ? `«${selectedRecord.quote.quote}»`
                   : 'Цитата в этот день не сохранена'}
               </blockquote>
+              {selectedRecord.quote?.author && (
+                <p className="detail-quote-meta">
+                  — {selectedRecord.quote.author}
+                  {selectedRecord.quote.source === 'dummyjson' ? ' · DummyJSON API' : ''}
+                </p>
+              )}
             </div>
 
             <div className="detail-section">

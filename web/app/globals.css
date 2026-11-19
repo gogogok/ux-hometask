@@ -508,6 +508,19 @@ h1 {
   line-height: 1.04;
   letter-spacing: -.055em;
 }
+.quote-copy {
+  position: relative;
+  z-index: 2;
+}
+.quote-attribution {
+  margin: -24px 0 32px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px 14px;
+  color: #3f4563;
+  font-size: 12px;
+  line-height: 1.4;
+}
 
 .soft-button {
   position: relative;
@@ -525,6 +538,9 @@ h1 {
   font-weight: 620;
   cursor: pointer;
 }
+.soft-button:disabled { opacity: .6; cursor: wait; }
+.loading-spin { animation: loading-spin .8s linear infinite; }
+@keyframes loading-spin { to { transform: rotate(360deg); } }
 
 .quote-card-actions {
   position: relative;
@@ -632,6 +648,12 @@ h1 {
   color: var(--muted);
   font-size: 13px;
   line-height: 1.55;
+}
+.preview-quote-author {
+  display: block;
+  margin-top: 6px;
+  color: #918983;
+  font-size: 11px;
 }
 
 .empty-state.small { min-height: 390px; }
@@ -879,6 +901,12 @@ h1 {
   font-weight: 560;
   line-height: 1.45;
 }
+.detail-quote-meta {
+  margin: 9px 0 0;
+  color: #3f4563;
+  font-size: 10px;
+  line-height: 1.4;
+}
 
 .saved-heading {
   display: flex;
@@ -1002,5 +1030,5 @@ h1 {
   .detail-heading h2 { font-size: 24px; }
 }
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; }
+  *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; animation: none !important; }
 }
